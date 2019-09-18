@@ -1,0 +1,39 @@
+import telebot;
+import random
+from enum import Enum
+
+
+class Status(Enum):
+    open = 1
+    close = 2
+    notFoundNetwork = 3
+
+
+bot = telebot.TeleBot('629898051:AAFKGaRfbMqa0jDH9Az4-B8pWEYKhfpcc9E');
+
+
+@bot.message_handler(commands=['start'])
+def start_message(message):
+    bot.send_message(message.chat.id, 'Привет, ты написал мне /start')
+
+
+@bot.message_handler(content_types=['text'])
+def send_text(message):
+    mes = message.text.lower()
+    print(mes)
+    if mes.find("статус") != -1:
+        number = mes.split()[len(mes.split()) - 1]
+        request(message, number)
+    elif message.text.lower() == 'пока':
+        bot.send_message(message.chat.id, 'Прощай, создатель')
+
+
+def request(message, number):
+    bot.send_message(message.chat.id, 'Отправляю запрос на замок N ' + number)
+    r = random.randint(1, 3)
+    print(r)
+    stat = Status(r)
+    bot.send_message(message.chat.id, 'статус замка ' + stat.name)
+
+
+bot.polling()
