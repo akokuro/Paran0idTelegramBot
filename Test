@@ -1,59 +1,180 @@
-import telebot;
-import random
-from enum import Enum
+import os
+import telebot
+import requests
+import pickle
+import json
 
 
-class Status(Enum):
-    open = 1
-    close = 2
-    notFoundNetwork = 3
+class UserToken:
+    data = {}
+
+    @staticmethod
+    def add(chat_id, token):
+        UserToken.data[chat_id] = token
+
+    @staticmethod
+    def get(chat_id):
+        return UserToken.data[chat_id]
+
+    @staticmethod
+    def store():
+        pickle.dump(UserToken.data, file=open('users.pickle', 'wb'))
+
+    @staticmethod
+    def load():
+        if os.path.exists('users.pickle'):
+            UserToken.data = pickle.load(file=open('users.pickle', 'rb'))
 
 
-bot = telebot.TeleBot('629898051:AAFKGaRfbMqa0jDH9Az4-B8pWEYKhfpcc9E');
-
-
-@bot.message_handler(commands=['url'])
-def url(message):
-    markup = types.InlineKeyboardMarkup()
-    btn_my_site = types.InlineKeyboardButton(text='Наш сайт', url='https://habrahabr.ru')
-    markup.add(btn_my_site)
-    bot.send_message(message.chat.id, "Нажми на кнопку и перейди на наш сайт.", reply_markup=markup)
-
-
-@bot.message_handler(content_types=['new_chat_members'])
-def greeting(message):
-    bot.reply_to(message, text='Приветствем Вас в нашей системе Paran0id. Предлагаем вам зарегестрироваться в ыслужбе.')
+bot = telebot.TeleBot('629898051:AAFKGaRfbMqa0jDH9Az4-B8pWEYKhfpcc9E')
 
 
 @bot.message_handler(commands=['start'])
 def start_message(message):
-    bot.send_message(message.chat.id, 'Привет, ты написал мне /start')
+    bot.send_message(message.chat.id, 'Напиши мне /help ,чтобы увидеть, что я умею')
     print(message.chat.id)
+
+
+@bot.message_handler(commands=['login'])
+def start_message(message):
+    bot.send_message(message.chat.id, 'Для входа введите слово вход, ваш mail и пароль в одну строку через пробел')
 
 
 @bot.message_handler(commands=['help'])
 def start_message(message):
-    bot.send_message(message.chat.id, 'Статус замка *имя* - именно в таком формате вы должны написать мне запрос')
-    print(message.chat.id)
+    bot.send_message(message.chat.id,
+                     '/register - регистрация пользователя в системе \n /login - вход в систему \n /lockReg - регистрация замка \n /getList - получение списка замков и их состояний')
+
+
+@bot.message_handler(commands=['register'])
+def start_message(message):
+    bot.send_message(message.chat.id,
+                     'Для регистрации введите слово регистрация, ваш mail и пароль(не менее 8 символов) в одну строку через пробел')
+
+
+@bot.message_handler(commands=['lockreg'])
+def start_message(message):
+    bot.send_message(message.chat.id,
+                     'Чтобы зарегестрировать замок, введите слово замок, его имя(не стоит вводить адрес для вашей же безопасности) и токен в одну строку через пробел')
+
+
+@bot.message_handler(commands=['getlist'])
+def start_message(message):
+    bot.send_message(message.chat.id, 'Секунду, информация обрабатывается')
+    getList(message)
 
 
 @bot.message_handler(content_types=['text'])
 def send_text(message):
     mes = message.text.lower()
     print(mes)
-    if mes.find("статус") != -1:
-        number = mes.split()[len(mes.split()) - 1]
-        request(message, number)
-    elif message.text.lower() == 'пока':
-        bot.send_message(message.chat.id, 'Прощай, создатель')
+    if mes.find("регистрация") != -1:
+        regist_user(message)
+    elif mes.find("вход") != -1:
+        enter(message)
+    elif mes.find("замок") != -1:
+        regist_lock(message)
 
 
-def request(message, number):
-    bot.send_message(message.chat.id, 'Отправляю запрос на замок N ' + number)
-    r = random.randint(1, 3)
-    print(r)
-    stat = Status(r)
-    bot.send_message(message.chat.id, 'статус замка ' + stat.name)
+def regist_user(message):
+    mes = message.text.lower()
+    mail = mes.split(" ")[1]
+    password = mes.split(" ")[2]
+    print(mail)
+    print(password)
+    contacts_data = {
+        "email": mail,
+        "password": password
+    }
+    answer = requests.post('https://gotestulstu.herokuapp.com/api/user/register', json=contacts_data)
+    print(type(answer))
+    jwt = json.loads(answer.text)
+    print(answer.text)
+    print(jwt["user"]["token"])
+    UserToken.add(message.chat.id, jwt["user"]["token"])
+    UserToken.store()
+    if (jwt["message"] == "success"):
+        bot.send_message(message.chat.id, 'Вы успешно зарегестрировались')
+    else:
+        bot.send_message(message.chat.id, 'Некорректно введены данные. Перевровертьте и попытайтесь снова.')
 
 
-bot.polling()
+def regist_lock(message):
+    mes = message.text.lower()
+    name = mes.split(" ")[1]
+    token = mes.split(" ")[2]
+    print(name)
+    print(token)
+    headers = {"Authorization": "Bearer " + UserToken.get(message.chat.id), "Token": token,
+               "Content-Type": "application/json"}
+    contacts_data = {
+        "Name": name
+    }
+    answer = requests.post('https://gotestulstu.herokuapp.com/api/lock/register', data=json.dumps(contacts_data),
+                           headers=headers)
+    print(type(answer))
+    jwt = json.loads(answer.text)
+    print(answer.text)
+    if (jwt["message"] == "success"):
+        bot.send_message(message.chat.id, 'Вы успешно зарегестрировали замок')
+    else:
+        bot.send_message(message.chat.id, 'Некорректно введены данные. Перевровертьте и попытайтесь снова.')
+
+
+def enter(message):
+    mes = message.text.lower()
+    mail = mes.split(" ")[1]
+    password = mes.split(" ")[2]
+    print(mail)
+    print(password)
+    contacts_data = {
+        "email": mail,
+        "password": password
+    }
+    answer = requests.post('https://gotestulstu.herokuapp.com/api/user/login', json=contacts_data)
+    print(type(answer))
+    jwt = json.loads(answer.text)
+    print(answer.text)
+    print(jwt["user"]["token"])
+    UserToken.add(message.chat.id, jwt["user"]["token"])
+    UserToken.store()
+    if (jwt["message"] == "Logged In"):
+        bot.send_message(message.chat.id, 'Вы успешно вошли')
+    else:
+        bot.send_message(message.chat.id, 'Некорректно введены данные. Перевровертьте и попытайтесь снова.')
+
+
+def getList(message):
+    print(UserToken.get(message.chat.id))
+    headers = {"Authorization": "Bearer " + UserToken.get(message.chat.id)}
+    contacts_data = {
+    }
+    answer = requests.get('https://gotestulstu.herokuapp.com/api/lock/getList', headers=headers)
+    print(type(answer))
+    jwt = json.loads(answer.text)
+    print(answer.text)
+    rez = []
+    i = 0
+    for lock in jwt["Locks"]:
+        s = ""
+        s += lock["Name"]
+        s += "  "
+        s += "закрыт" if lock["lockStatus"] else "открыт"
+        s += "     "
+        s += "есть" if lock["powerStatus"] else "нет"
+        s += "     "
+        s += "есть" if lock["netStatus"] else "нет"
+        print(s)
+        rez.append(s)
+        i = i + 1
+    print("Имя    Статус   Питание   Сеть")
+    rezult = "Имя     Статус  Питание  Сеть" + "\n"
+    for s in rez:
+        print(s)
+        rezult = rezult + s + "\n"
+    bot.send_message(message.chat.id, rezult)
+
+
+if __name__ == "__main__":
+    UserToken.load()
+    bot.polling()
